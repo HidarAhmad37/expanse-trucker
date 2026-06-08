@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { format } from 'date-fns'
 import { supabase } from '@/lib/supabase'
+import { requireUser } from '@/lib/requireUser'
 import { createLoanPaymentTransaction } from '@/lib/loanTransactions'
 import { useTransactionStore } from '@/stores/transactions'
 import type { Loan, LoanType, LoanSummary } from '@/types'
@@ -10,6 +11,11 @@ import { getLoanBaseAmount } from '@/utils/currency'
 export const useLoanStore = defineStore('loans', () => {
   const loans = ref<Loan[]>([])
   const loading = ref(false)
+
+  function reset() {
+    loans.value = []
+    loading.value = false
+  }
 
   const borrowedLoans = computed(() => loans.value.filter(l => l.type === 'borrowed'))
   const lentLoans = computed(() => loans.value.filter(l => l.type === 'lent'))
@@ -76,10 +82,17 @@ export const useLoanStore = defineStore('loans', () => {
   }
 
   async function fetchLoans() {
+    const { user, error: authError } = await requireUser()
+    if (authError) {
+      loans.value = []
+      return { data: null, error: authError }
+    }
+
     loading.value = true
     const { data, error } = await supabase
       .from('loans')
       .select('*')
+      .eq('user_id', user.id)
       .order('date', { ascending: false })
       .order('created_at', { ascending: false })
 
@@ -99,8 +112,8 @@ export const useLoanStore = defineStore('loans', () => {
     date: string
     due_date?: string
   }) {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { error: new Error('Not authenticated') }
+    const { user, error: authError } = await requireUser()
+    if (authError) return { error: authError }
 
     const amountRepaid = loan.amount_repaid ?? 0
     const { data, error } = await supabase
@@ -129,11 +142,15 @@ export const useLoanStore = defineStore('loans', () => {
     const loan = loans.value.find(l => l.id === id)
     if (!loan) return { error: new Error('Loan not found') }
 
+    const { user, error: authError } = await requireUser()
+    if (authError) return { error: authError }
+
     const previousRepaid = Number(loan.amount_repaid)
     const { data, error } = await supabase
       .from('loans')
       .update({ ...updates, updated_at: new Date().toISOString() })
       .eq('id', id)
+      .eq('user_id', user.id)
       .select()
       .single()
 
@@ -166,7 +183,14 @@ export const useLoanStore = defineStore('loans', () => {
   }
 
   async function deleteLoan(id: string) {
-    const { error } = await supabase.from('loans').delete().eq('id', id)
+    const { user, error: authError } = await requireUser()
+    if (authError) return { error: authError }
+
+    const { error } = await supabase
+      .from('loans')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', user.id)
     if (!error) loans.value = loans.value.filter(l => l.id !== id)
     return { error }
   }
@@ -174,6 +198,7 @@ export const useLoanStore = defineStore('loans', () => {
   return {
     loans,
     loading,
+    reset,
     borrowedLoans,
     lentLoans,
     summary,

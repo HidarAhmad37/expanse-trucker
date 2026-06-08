@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { supabase } from '@/lib/supabase'
+import { requireUser } from '@/lib/requireUser'
 import type { Transaction, Category, TransactionType, MonthlySummary, DailySpending } from '@/types'
 import { BASE_CURRENCY } from '@/types'
 import { getTransactionBaseAmount } from '@/utils/currency'
@@ -14,10 +15,20 @@ export const useTransactionStore = defineStore('transactions', () => {
   const expenseCategories = computed(() => categories.value.filter(c => c.type === 'expense'))
   const incomeCategories = computed(() => categories.value.filter(c => c.type === 'income'))
 
+  function reset() {
+    transactions.value = []
+    categories.value = []
+    loading.value = false
+  }
+
   async function fetchCategories() {
+    const { user, error: authError } = await requireUser()
+    if (authError) return { data: null, error: authError }
+
     const { data, error } = await supabase
       .from('categories')
       .select('*')
+      .eq('user_id', user.id)
       .order('name')
     if (!error && data) categories.value = data
     return { data, error }
@@ -29,8 +40,8 @@ export const useTransactionStore = defineStore('transactions', () => {
     color: string
     icon?: string
   }) {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { error: new Error('Not authenticated') }
+    const { user, error: authError } = await requireUser()
+    if (authError) return { error: authError }
 
     const { data, error } = await supabase
       .from('categories')
@@ -56,6 +67,9 @@ export const useTransactionStore = defineStore('transactions', () => {
     id: string,
     updates: Partial<Pick<Category, 'name' | 'icon' | 'color' | 'type'>>
   ) {
+    const { user, error: authError } = await requireUser()
+    if (authError) return { data: null, error: authError }
+
     const payload = { ...updates }
     if (payload.name) payload.name = payload.name.trim()
 
@@ -63,6 +77,7 @@ export const useTransactionStore = defineStore('transactions', () => {
       .from('categories')
       .update(payload)
       .eq('id', id)
+      .eq('user_id', user.id)
       .select('*')
       .single()
 
@@ -75,16 +90,30 @@ export const useTransactionStore = defineStore('transactions', () => {
   }
 
   async function deleteCategory(id: string) {
-    const { error } = await supabase.from('categories').delete().eq('id', id)
+    const { user, error: authError } = await requireUser()
+    if (authError) return { error: authError }
+
+    const { error } = await supabase
+      .from('categories')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', user.id)
     if (!error) categories.value = categories.value.filter(c => c.id !== id)
     return { error }
   }
 
   async function fetchTransactions(startDate?: string, endDate?: string) {
+    const { user, error: authError } = await requireUser()
+    if (authError) {
+      transactions.value = []
+      return { data: null, error: authError }
+    }
+
     loading.value = true
     let query = supabase
       .from('transactions')
       .select('*, category:categories(*)')
+      .eq('user_id', user.id)
       .order('date', { ascending: false })
       .order('created_at', { ascending: false })
 
@@ -106,8 +135,8 @@ export const useTransactionStore = defineStore('transactions', () => {
     description?: string
     date: string
   }) {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { error: new Error('Not authenticated') }
+    const { user, error: authError } = await requireUser()
+    if (authError) return { error: authError }
 
     const { data, error } = await supabase
       .from('transactions')
@@ -125,10 +154,14 @@ export const useTransactionStore = defineStore('transactions', () => {
   }
 
   async function updateTransaction(id: string, updates: Partial<Transaction>) {
+    const { user, error: authError } = await requireUser()
+    if (authError) return { data: null, error: authError }
+
     const { data, error } = await supabase
       .from('transactions')
       .update({ ...updates, updated_at: new Date().toISOString() })
       .eq('id', id)
+      .eq('user_id', user.id)
       .select('*, category:categories(*)')
       .single()
 
@@ -140,7 +173,14 @@ export const useTransactionStore = defineStore('transactions', () => {
   }
 
   async function deleteTransaction(id: string) {
-    const { error } = await supabase.from('transactions').delete().eq('id', id)
+    const { user, error: authError } = await requireUser()
+    if (authError) return { error: authError }
+
+    const { error } = await supabase
+      .from('transactions')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', user.id)
     if (!error) transactions.value = transactions.value.filter(t => t.id !== id)
     return { error }
   }
@@ -214,6 +254,7 @@ export const useTransactionStore = defineStore('transactions', () => {
     loading,
     expenseCategories,
     incomeCategories,
+    reset,
     fetchCategories,
     addCategory,
     updateCategory,

@@ -1,5 +1,4 @@
 import { supabase } from './supabase'
-import { seedDefaultBudgets } from './seedDefaultBudgets'
 
 const DEFAULT_CATEGORIES = [
   { name: 'Salary', icon: 'briefcase', color: '#10b981', type: 'income' as const },
@@ -48,9 +47,6 @@ export async function setupNewUser(fullName?: string) {
       .insert(DEFAULT_CATEGORIES.map(cat => ({ ...cat, user_id: user.id })))
 
     if (categoriesError) return { error: categoriesError }
-
-    const now = new Date()
-    await seedDefaultBudgets(now.getMonth() + 1, now.getFullYear())
   }
 
   return { error: null }

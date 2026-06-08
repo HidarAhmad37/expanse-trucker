@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { supabase } from '@/lib/supabase'
 import { setupNewUser } from '@/lib/setupNewUser'
+import { resetUserData } from '@/lib/resetUserData'
 import type { Profile } from '@/types'
 import type { User, Session } from '@supabase/supabase-js'
 
@@ -10,14 +11,24 @@ export const useAuthStore = defineStore('auth', () => {
   const session = ref<Session | null>(null)
   const profile = ref<Profile | null>(null)
   const loading = ref(true)
+  let activeUserId: string | null = null
 
   const isAuthenticated = computed(() => !!user.value)
+
+  function clearSessionState() {
+    user.value = null
+    session.value = null
+    profile.value = null
+    activeUserId = null
+    resetUserData()
+  }
 
   async function initialize() {
     loading.value = true
     const { data: { session: currentSession } } = await supabase.auth.getSession()
     session.value = currentSession
     user.value = currentSession?.user ?? null
+    activeUserId = user.value?.id ?? null
 
     if (user.value) {
       await setupNewUser()
@@ -25,8 +36,18 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     supabase.auth.onAuthStateChange(async (event, newSession) => {
+      const nextUserId = newSession?.user?.id ?? null
+      const switchedAccount = activeUserId !== null && nextUserId !== null && activeUserId !== nextUserId
+      const signedOut = activeUserId !== null && nextUserId === null
+
+      if (signedOut || switchedAccount) {
+        resetUserData()
+        profile.value = null
+      }
+
       session.value = newSession
       user.value = newSession?.user ?? null
+      activeUserId = nextUserId
 
       if (event === 'PASSWORD_RECOVERY') {
         const { default: router } = await import('@/router')
@@ -96,7 +117,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function signOut() {
     const { error } = await supabase.auth.signOut()
-    profile.value = null
+    clearSessionState()
     return { error }
   }
 

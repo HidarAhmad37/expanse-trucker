@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { RouterView, useRoute } from 'vue-router'
+import { RouterView, useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import CalculatorModal from '@/components/ui/CalculatorModal.vue'
 import {
@@ -18,6 +18,7 @@ import {
 
 const auth = useAuthStore()
 const route = useRoute()
+const router = useRouter()
 const sidebarOpen = ref(false)
 const calculatorOpen = ref(false)
 
@@ -37,6 +38,7 @@ function isActive(path: string) {
 
 async function handleLogout() {
   await auth.signOut()
+  await router.push({ name: 'login' })
 }
 
 function onGlobalKeydown(e: KeyboardEvent) {

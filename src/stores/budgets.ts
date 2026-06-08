@@ -1,17 +1,30 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { supabase } from '@/lib/supabase'
+import { requireUser } from '@/lib/requireUser'
 import type { Budget } from '@/types'
 
 export const useBudgetStore = defineStore('budgets', () => {
   const budgets = ref<Budget[]>([])
   const loading = ref(false)
 
+  function reset() {
+    budgets.value = []
+    loading.value = false
+  }
+
   async function fetchBudgets(month: number, year: number) {
+    const { user, error: authError } = await requireUser()
+    if (authError) {
+      budgets.value = []
+      return { data: null, error: authError }
+    }
+
     loading.value = true
     const { data, error } = await supabase
       .from('budgets')
       .select('*, category:categories(*)')
+      .eq('user_id', user.id)
       .eq('month', month)
       .eq('year', year)
       .order('created_at', { ascending: true })
@@ -27,8 +40,8 @@ export const useBudgetStore = defineStore('budgets', () => {
     month: number
     year: number
   }) {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { error: new Error('Not authenticated') }
+    const { user, error: authError } = await requireUser()
+    if (authError) return { error: authError }
 
     const { data, error } = await supabase
       .from('budgets')
@@ -46,10 +59,14 @@ export const useBudgetStore = defineStore('budgets', () => {
     month?: number
     year?: number
   }) {
+    const { user, error: authError } = await requireUser()
+    if (authError) return { data: null, error: authError }
+
     const { data, error } = await supabase
       .from('budgets')
       .update(updates)
       .eq('id', id)
+      .eq('user_id', user.id)
       .select('*, category:categories(*)')
       .single()
 
@@ -66,8 +83,8 @@ export const useBudgetStore = defineStore('budgets', () => {
     month: number
     year: number
   }) {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { error: new Error('Not authenticated') }
+    const { user, error: authError } = await requireUser()
+    if (authError) return { error: authError }
 
     const { data, error } = await supabase
       .from('budgets')
@@ -90,7 +107,14 @@ export const useBudgetStore = defineStore('budgets', () => {
   }
 
   async function deleteBudget(id: string) {
-    const { error } = await supabase.from('budgets').delete().eq('id', id)
+    const { user, error: authError } = await requireUser()
+    if (authError) return { error: authError }
+
+    const { error } = await supabase
+      .from('budgets')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', user.id)
     if (!error) budgets.value = budgets.value.filter(b => b.id !== id)
     return { error }
   }
@@ -98,6 +122,7 @@ export const useBudgetStore = defineStore('budgets', () => {
   return {
     budgets,
     loading,
+    reset,
     fetchBudgets,
     addBudget,
     updateBudget,

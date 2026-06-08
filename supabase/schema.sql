@@ -136,6 +136,49 @@ CREATE POLICY "Users can view own profile" ON profiles FOR SELECT USING (auth.ui
 CREATE POLICY "Users can insert own profile" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
 CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
 
+-- Enforce that related rows belong to the same user
+CREATE OR REPLACE FUNCTION public.check_budget_category_owner()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.categories
+    WHERE id = NEW.category_id AND user_id = NEW.user_id
+  ) THEN
+    RAISE EXCEPTION 'Budget category must belong to the same user';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS ensure_budget_category_owner ON public.budgets;
+CREATE TRIGGER ensure_budget_category_owner
+  BEFORE INSERT OR UPDATE ON public.budgets
+  FOR EACH ROW EXECUTE FUNCTION public.check_budget_category_owner();
+
+CREATE OR REPLACE FUNCTION public.check_transaction_refs_owner()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.category_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.categories
+    WHERE id = NEW.category_id AND user_id = NEW.user_id
+  ) THEN
+    RAISE EXCEPTION 'Transaction category must belong to the same user';
+  END IF;
+  IF NEW.loan_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.loans
+    WHERE id = NEW.loan_id AND user_id = NEW.user_id
+  ) THEN
+    RAISE EXCEPTION 'Transaction loan must belong to the same user';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS ensure_transaction_refs_owner ON public.transactions;
+CREATE TRIGGER ensure_transaction_refs_owner
+  BEFORE INSERT OR UPDATE ON public.transactions
+  FOR EACH ROW EXECUTE FUNCTION public.check_transaction_refs_owner();
+
 -- Profile + categories are created by the Vue app after signup (see src/lib/setupNewUser.ts)
 -- Do NOT add auth.users triggers — they cause "Database error saving new user" on many projects.
 DROP TRIGGER IF EXISTS on_profile_created ON public.profiles;
