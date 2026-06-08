@@ -94,7 +94,7 @@ async function handleLogin() {
             {{ loading ? 'Signing in...' : 'Sign In' }}
           </button>
 
-          <!-- <button
+          <button
             type="button"
             class="btn-secondary w-full flex items-center justify-center gap-2"
             :disabled="testingConnection"
@@ -102,7 +102,7 @@ async function handleLogin() {
           >
             <Wifi class="w-4 h-4" />
             {{ testingConnection ? 'Testing...' : 'Test Supabase Connection' }}
-          </button> -->
+          </button>
 
           <div
             v-if="connectionResult"
